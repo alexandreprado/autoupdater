@@ -241,7 +241,7 @@ function resolvePaths() {
     console.log('resolving paths');
 
     if (process.platform === 'darwin') {
-        appDir = path.resolve(process.execPath, '../../../../../../../../JustRestaurante.app');
+        appDir = path.resolve(process.execPath, '../../../../../../../');
         appInstDir = path.dirname(appDir);
         appExec = appDir;
 

@@ -1,13 +1,7 @@
 /**
- * Created by Prado on 26/02/17.
- */
-
-// var system_path = 'http://localhost:3000/admin';
-var system_path = 'https://justrestaurante.herokuapp.com/admin';
-
-/**
  * Created by Prado on 07/03/17.
  */
+
 var AWS = require('aws-sdk');
 var child_process = require('child_process');
 var fs = require('fs');
@@ -18,12 +12,14 @@ var shell = require('shelljs');
 var url = require('url');
 var https = require('https');
 
-var manifest = require(path.resolve(process.cwd(), 'package.json'));
+const MANIFEST_DIR = path.resolve(process.cwd(), 'package.json');
+
+var manifest = require(MANIFEST_DIR);
 
 AWS.config.update({
-    accessKeyId: manifest.AWS_access_key,
-    secretAccessKey: manifest.AWS_secret_acccess_key,
-    region: manifest.AWS_region
+    accessKeyId: manifest.autoupdater.AWS_access_key,
+    secretAccessKey: manifest.autoupdater.AWS_secret_acccess_key,
+    region: manifest.autoupdater.AWS_region
 });
 
 var s3 = new AWS.S3();
@@ -35,11 +31,18 @@ const UPDATER_TEMP_DIR = path.resolve(SYSTEM_TEMP_DIR, TMP_FOLDER);
 const UPDATES_DIR = path.resolve(UPDATER_TEMP_DIR, 'updates');
 const UPDATER_BIN = path.resolve(UPDATER_TEMP_DIR, /^win/.test(process.platform) ? 'updater.exe' : 'updater');
 
-var isNWJS = (typeof require('nw.gui') !== "undefined"); // check if its running on NW.js or Electron
+function isNWJS() {
+    try {
+        return (typeof nw !== "undefined");
+    } catch (e) {
+        console.log(e);
+        return false;
+    }
+}
 
 var app, appDir, appInstDir, appExec, bundledUpdaterPath;
 
-if (isNWJS) {
+if (isNWJS()) {
     app = nw.App;
 } else {
     app = require('electron').app;
@@ -88,7 +91,7 @@ function checkUpdates() {
     return new Promise(function (resolve, reject) {
 
         var current_version = manifest.version;
-        var platform = (manifest.prefix ? (manifest.prefix + '/') : '') + process.platform;
+        var platform = (manifest.autoupdater.AWS_bucket_prefix ? (manifest.autoupdater.AWS_bucket_prefix + '/') : '') + process.platform;
 
         if (!current_version || !platform) {
             return reject("Parâmetros incompletos. Verifique");
@@ -96,7 +99,7 @@ function checkUpdates() {
 
         console.log('pasta: ' + platform);
 
-        s3.listObjects({Bucket: manifest.AWS_bucket_name, Prefix: platform}).on('success', function handlePage(r) {
+        s3.listObjects({Bucket: manifest.autoupdater.AWS_bucket_name, Prefix: platform}).on('success', function handlePage(r) {
 
             if (r.hasNextPage()) {
                 r.nextPage().on('success', handlePage).send();
@@ -155,7 +158,7 @@ function getLatest(current_version, files) {
         var blocks = latest_file_name.split('_v');
         var latest_version = blocks[1].replace('.zip', '');
 
-        var urlParams = {Bucket: manifest.AWS_bucket_name, Key: latest_file.Key};
+        var urlParams = {Bucket: manifest.autoupdater.AWS_bucket_name, Key: latest_file.Key};
 
         var result = versionCompare(latest_version, current_version);
 
@@ -234,24 +237,24 @@ function resolvePaths() {
     console.log('resolving paths');
 
     if (process.platform === 'darwin') {
-        appDir = path.resolve(process.execPath, '../../../../../../../');
+        appDir = path.resolve(process.execPath, '../../../../../../../../JustRestaurante.app');
         appInstDir = path.dirname(appDir);
         appExec = appDir;
 
-        if (isNWJS) {
-            bundledUpdaterPath = path.resolve(appDir, 'Contents', 'Resources', 'app.nw', 'updater');
+        if (isNWJS()) {
+            bundledUpdaterPath = path.resolve(appDir, 'Contents', 'Resources', 'app.nw', 'node_modules', 'autoupdater', 'updater');
         } else {
-            bundledUpdaterPath = path.resolve(appDir, 'Contents', 'Resources', 'app', 'updater');
+            bundledUpdaterPath = path.resolve(appDir, 'Contents', 'Resources', 'app', 'node_modules', 'autoupdater', 'updater');
         }
     } else if (process.platform === 'win32') {
         appDir = path.resolve(path.dirname(process.execPath), 'package.nw');
         appInstDir = appDir;
         appExec = path.resolve(appDir, manifest.name + '.exe');
 
-        if (isNWJS) {
-            bundledUpdaterPath = path.resolve(appDir, 'updater.exe');
+        if (isNWJS()) {
+            bundledUpdaterPath = path.resolve(appDir, 'node_modules', 'autoupdater', 'updater.exe');
         } else {
-            bundledUpdaterPath = path.resolve(appDir, 'resources', 'app', 'updater.exe');
+            bundledUpdaterPath = path.resolve(appDir, 'resources', 'app', 'node_modules', 'autoupdater', 'updater.exe');
         }
     } else {
 
@@ -320,15 +323,15 @@ function notifyUser() {
 
     return new Promise(function (resolve) {
 
-        var notification_body = manifest.notification_message_body ? manifest.notification_message_body : 'Clique aqui para instalar';
-        var notification_title = manifest.notification_message_title ? manifest.notification_message_title : 'Uma nova versão está disponível!';
+        var notification_body = manifest.autoupdater.notification_message_body ? manifest.autoupdater.notification_message_body : 'Clique aqui para instalar';
+        var notification_title = manifest.autoupdater.notification_message_title ? manifest.autoupdater.notification_message_title : 'Uma nova versão está disponível!';
 
         var options = {
             body: notification_body
         };
 
-        if (manifest.notification_icon_png) {
-            options.icon = manifest.notification_icon_png;
+        if (manifest.autoupdater.notification_icon_png) {
+            options.icon = manifest.autoupdater.notification_icon_png;
         }
 
         var notification = new Notification(notification_title, options);

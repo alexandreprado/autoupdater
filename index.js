@@ -8,6 +8,11 @@ var fs = require('fs');
 var os = require('os');
 var path = require('path');
 var shell = require('shelljs');
+var notifier = require('node-notifier');
+var logger = require('electron-logger');
+
+
+logger.setOutput({file: "./tmp.log"});
 
 var url = require('url');
 var https = require('https');
@@ -327,23 +332,25 @@ function notifyUser() {
         var notification_title = manifest.autoupdater.notification_message_title ? manifest.autoupdater.notification_message_title : 'Uma nova versão está disponível!';
 
         var options = {
-            body: notification_body
+            title: notification_title,
+            message: notification_body,
+            sound: true, // Only Notification Center or Windows Toasters
+            wait: true // Wait with callback, until user action is taken against notification,
         };
 
         if (manifest.autoupdater.notification_icon_png) {
             options.icon = manifest.autoupdater.notification_icon_png;
         }
 
-        var notification = new Notification(notification_title, options);
+        notifier.notify(options);
 
-        notification.onclick = function () {
-            notification.close();
+        notifier.on('click', function (notifierObject, options) {
             resolve(true);
-        };
+        });
 
-        notification.onclose = function () {
+        notifier.on('timeout', function (notifierObject, options) {
             resolve(false);
-        }
+        });
     });
 }
 

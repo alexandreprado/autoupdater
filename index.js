@@ -11,7 +11,6 @@ var shell = require('shelljs');
 var notifier = require('node-notifier');
 var logger = require('electron-logger');
 
-
 logger.setOutput({file: "./tmp.log"});
 
 var url = require('url');

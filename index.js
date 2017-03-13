@@ -10,14 +10,15 @@ var path = require('path');
 var shell = require('shelljs');
 var notifier = require('node-notifier');
 var logger = require('electron-logger');
+var unzip = require('unzip');
+var targz = require('tar.gz');
 
-logger.setOutput({file: path.resolve(process.cwd(), 'updater.log')});
+logger.setOutput({file: path.resolve(path.dirname(require.main.filename), 'updater.log')});
 
 var url = require('url');
 var https = require('https');
 
-const MANIFEST_DIR = path.resolve(process.cwd(), 'package.json');
-
+const MANIFEST_DIR = path.resolve(path.dirname(require.main.filename), 'package.json');
 var manifest = require(MANIFEST_DIR);
 
 if (!manifest.autoupdater) {
@@ -44,6 +45,9 @@ const TMP_FOLDER = APP_NAME_LOWER + '-updater';
 const UPDATER_TEMP_DIR = path.resolve(SYSTEM_TEMP_DIR, TMP_FOLDER);
 const UPDATES_DIR = path.resolve(UPDATER_TEMP_DIR, 'updates');
 const UPDATER_BIN = path.resolve(UPDATER_TEMP_DIR, /^win/.test(process.platform) ? 'updater.exe' : 'updater');
+const FILE_MIN_SIZE = 40000000; // 40mb
+const ARCHIVE_EXT = process.platform === 'darwin' ? '.tar.gz' : '.zip';
+const AWS_PREFIX = (manifest.autoupdater.AWS_bucket_prefix ? (manifest.autoupdater.AWS_bucket_prefix + '/') : '') + process.platform;
 
 function isNWJS() {
     try {
@@ -85,39 +89,92 @@ exports.checkForUpdates = function () {
 
         var bundlePath = path.resolve(UPDATES_DIR, data.latest_version);
 
+        logger.info('Iniciando verificação de existência do arquivo: ' + bundlePath);
+
         return fetchUpdate(data.url, bundlePath)
             .then(notifyUser)
             .then(function (result) {
+                logger.info('verificando resposta do usuario');
                 if (result) {
+                    logger.info('chamando startUpdate com ' + bundlePath);
                     startUpdate(bundlePath);
+                } else {
+                    logger.info('promise negativa');
                 }
+            }, function (e) {
+                logger.error('Erro ao fazer download do arquivo');
+                logger.error(e);
             });
 
-    }, function (err) {
+    }, function (e) {
         logger.error('Erro ao buscar updates');
-        logger.error(err);
+        logger.error(e);
     });
 };
+
+function arquivoValido(bundledUpdaterPath) {
+
+    return new Promise(function (resolve, reject) {
+
+        logger.info('validando arquivo ' + bundledUpdaterPath);
+
+        try {
+
+            if (process.platform === 'win32') {
+
+                fs.createReadStream(bundledUpdaterPath)
+                    .pipe(unzip.Parse())
+                    .on('entry', function (entry) {
+                        // var fileName = entry.path;
+                        // var type = entry.type; // 'Directory' or 'File'
+                        // var size = entry.size;
+                        entry.autodrain();
+                    }).on('close', function () {
+                    logger.info('arquivo válido');
+                    resolve();
+                }).on('end', function () {
+                    logger.info('arquivo válido');
+                    resolve();
+                });
+            } else {
+                fs.createReadStream(bundledUpdaterPath)
+                    .pipe(targz().createParseStream())
+                    .on("entry", function (entry) {
+                        // console.error("entry", e.props)
+                        // e.on("data", function (c) {
+                        //     console.error("  >>>" + c.toString().replace(/\n/g, "\\n"))
+                        // })
+                    }).on("end", function () {
+                    logger.info('arquivo válido');
+                    resolve();
+                });
+            }
+        } catch (e) {
+            logger.error('arquivo inválido');
+            logger.error(e.message);
+            reject(e.message);
+        }
+    });
+}
 
 function checkUpdates() {
 
     return new Promise(function (resolve, reject) {
 
         var current_version = manifest.version;
-        var platform = (manifest.autoupdater.AWS_bucket_prefix ? (manifest.autoupdater.AWS_bucket_prefix + '/') : '') + process.platform;
 
-        if (!current_version || !platform) {
+        if (!current_version || !AWS_PREFIX) {
             return reject("Parâmetros incompletos. Verifique");
         }
 
         logger.info('buscando arquivos no S3 com parâmetros');
         logger.info('current_version: ' + current_version);
-        logger.info('platform: ' + platform);
+        logger.info('platform: ' + AWS_PREFIX);
         logger.info('AWS_bucket_name: ' + manifest.autoupdater.AWS_bucket_name);
 
         s3.listObjects({
             Bucket: manifest.autoupdater.AWS_bucket_name,
-            Prefix: platform
+            Prefix: AWS_PREFIX
         }).on('success', function handlePage(r) {
 
             if (r.hasNextPage()) {
@@ -140,7 +197,7 @@ function getLatest(current_version, files) {
 
     return new Promise(function (resolve, reject) {
 
-        var result = 0, urlParams = '';
+        var result = 0, urlParams = '', latest_file_name = '';
 
         try {
 
@@ -164,27 +221,32 @@ function getLatest(current_version, files) {
 
                 if (!blocksA[1]) return 0;
 
-                var versionA = blocksA[1].replace('.zip', '');
+                logger.info('nome original do arquivo A: ' + blocksA[1] + ', trabalhando extensão: ' + ARCHIVE_EXT);
+
+                var versionA = blocksA[1].replace(ARCHIVE_EXT, '');
 
                 var filenameB = fileB.Key;
                 var blocksB = filenameB.split('_v');
 
                 if (!blocksB[1]) return 0;
 
-                var versionB = blocksB[1].replace('.zip', '');
+                logger.info('nome original do arquivo B: ' + blocksB[1] + ', trabalhando extensão: ' + ARCHIVE_EXT);
+
+                var versionB = blocksB[1].replace(ARCHIVE_EXT, '');
 
                 return versionCompare(versionB, versionA);
             });
 
             var latest_file = ordered_files[0];
-            var latest_file_name = latest_file.Key;
+            latest_file_name = latest_file.Key.replace((AWS_PREFIX + '/'), '');
 
             logger.info('Último arquivo processado: ' + latest_file_name);
 
             var blocks = latest_file_name.split('_v');
-            var latest_version = blocks[1].replace('.zip', '');
+            var latest_version = blocks[1].replace(ARCHIVE_EXT, '');
 
             urlParams = {Bucket: manifest.autoupdater.AWS_bucket_name, Key: latest_file.Key};
+            logger.info('nome original do arquivo latest_version: ' + latest_file_name + ', trabalhando extensão: ' + ARCHIVE_EXT);
             result = versionCompare(latest_version, current_version);
 
         } catch (e) {
@@ -203,14 +265,14 @@ function getLatest(current_version, files) {
                     return reject(err.message);
                 }
 
-                var  nome_arquivo = APP_NAME_LOWER + '_v' + latest_version + '.zip';
+                // var  nome_arquivo = APP_NAME_LOWER + '_v' + latest_version + ARCHIVE_EXT;
 
                 logger.info('URL do arquivo de atualização: ' + url);
-                logger.info('nome do arquivo de atualização: ' + nome_arquivo);
+                logger.info('nome do arquivo de atualização: ' + latest_file_name);
 
                 resolve({
                     url: url,
-                    latest_version: nome_arquivo
+                    latest_version: latest_file_name
                 });
             });
 
@@ -276,7 +338,7 @@ function resolvePaths() {
     logger.info('resolvendo rotas...');
 
     if (process.platform === 'darwin') {
-        appDir = path.resolve(process.execPath, '../../../../../../../');
+        appDir = path.resolve(path.dirname(require.main.filename), '../../../');
         appInstDir = path.dirname(appDir);
         appExec = appDir;
 
@@ -286,7 +348,7 @@ function resolvePaths() {
             bundledUpdaterPath = path.resolve(appDir, 'Contents', 'Resources', 'app', 'node_modules', 'autoupdater', 'updater');
         }
     } else if (process.platform === 'win32') {
-        appDir = path.resolve(path.dirname(process.execPath), 'package.nw');
+        appDir = path.dirname(process.execPath);
         appInstDir = appDir;
         appExec = path.resolve(appDir, manifest.name + '.exe');
 
@@ -301,6 +363,7 @@ function resolvePaths() {
     }
 
     logger.info('rotas resolvidas');
+    logger.info('process.execPath: ' + process.execPath);
     logger.info('appDir: ' + appDir);
     logger.info('appInstDir: ' + appInstDir);
     logger.info('appExec: ' + appExec);
@@ -335,7 +398,9 @@ function fetchUpdate(url, dest) {
     return fileExists(dest).then(function (exists) {
         logger.info('arquivo já existe? ' + (exists ? 'sim' : 'não'));
         if (exists) {
-            return Promise.resolve(dest);
+
+            return arquivoValido(dest);
+            // return Promise.resolve(dest);
         }
         return downloadFile(url, dest);
     });
@@ -343,8 +408,9 @@ function fetchUpdate(url, dest) {
 
 function downloadFile(source, dest) {
 
-    return new Promise(function (resolve) {
+    return new Promise(function (resolve, reject) {
 
+        logger.info('Iniciando download do arquivo como url ' + source);
         logger.info('Iniciando download do arquivo como host ' + url.parse(source).host + ' e path ' + url.parse(source).pathname);
 
         var options = {
@@ -353,15 +419,20 @@ function downloadFile(source, dest) {
         };
 
         var file = fs.createWriteStream(dest);
+        var total_bytes = 0;
 
         https.get(options, function (res) {
             var fsize = res.headers['content-length'];
             res.on('data', function (data) {
                 file.write(data);
+                total_bytes += file.bytesWritten;
                 progress(100 - (((fsize - file.bytesWritten) / fsize) * 100));
             }).on('end', function () {
                 logger.info('terminou o download do arquivo');
                 file.end();
+                if (total_bytes < FILE_MIN_SIZE) {
+                    return reject('Arquivo inválido, tamanho: ' + total_bytes);
+                }
                 resolve();
             });
         });
@@ -390,13 +461,14 @@ function notifyUser() {
         };
 
         if (manifest.autoupdater.notification_icon_png) {
-            options.icon = manifest.autoupdater.notification_icon_png;
+            var icon_dir = path.resolve(path.dirname(require.main.filename), manifest.autoupdater.notification_icon_png);
+            options.icon = icon_dir;
         }
 
         notifier.notify(options);
 
         notifier.on('click', function (notifierObject, options) {
-            logger.info('usuário clicou em sim, atualizando...');
+            logger.info('usuário clicou em sim');
             resolve(true);
         });
 
@@ -434,7 +506,7 @@ function fileExists(bundledUpdaterPath) {
                 throw err;
             }
 
-            if (stats.isFile() && stats.size < 5000) {
+            if (stats.isFile() && stats.size < FILE_MIN_SIZE) {
                 logger.info('arquivo existente mas com tamanho inválido: ' + stats.size + ', removendo...');
                 return removeFile(bundledUpdaterPath).then(function () {
                     return resolve(false);

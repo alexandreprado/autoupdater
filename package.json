@@ -6,6 +6,8 @@
     "aws-sdk": "^2.23.0",
     "electron-logger": "0.0.3",
     "node-notifier": "^5.0.2",
-    "shelljs": "^0.7.6"
+    "shelljs": "^0.7.6",
+    "tar.gz": "^1.0.5",
+    "unzip": "^0.1.11"
   }
 }

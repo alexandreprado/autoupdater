@@ -509,12 +509,12 @@ function fileExists(bundledUpdaterPath) {
                 throw err;
             }
 
-            if (stats.isFile() && stats.size < FILE_MIN_SIZE) {
-                logger.info('arquivo existente mas com tamanho inválido: ' + stats.size + ', removendo...');
-                return removeFile(bundledUpdaterPath).then(function () {
-                    return resolve(false);
-                });
-            }
+            // if (stats.isFile() && stats.size < FILE_MIN_SIZE) {
+            //     logger.info('arquivo existente mas com tamanho inválido: ' + stats.size + ', removendo...');
+            //     return removeFile(bundledUpdaterPath).then(function () {
+            //         return resolve(false);
+            //     });
+            // }
             if (stats.isFile()) {
                 return arquivoValido(bundledUpdaterPath).then(function(result){
                     return resolve(result);

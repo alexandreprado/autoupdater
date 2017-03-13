@@ -130,11 +130,12 @@ function arquivoValido(bundledUpdaterPath) {
                         // var size = entry.size;
                         entry.autodrain();
                     }).on('close', function () {
-                    logger.info('arquivo válido 1 ');
+                    logger.info('arquivo válido');
                     resolve(true);
-                }).on('end', function () {
-                    logger.info('arquivo válido 2 ');
-                    resolve(true);
+                }).on('error', function(e){
+                    logger.info('arquivo inválido');
+                    logger.info(e.message);
+                    resolve(false);
                 });
             } else {
                 fs.createReadStream(bundledUpdaterPath)
@@ -147,6 +148,10 @@ function arquivoValido(bundledUpdaterPath) {
                     }).on("end", function () {
                     logger.info('arquivo válido');
                     resolve(true);
+                }).on('error', function(e){
+                    logger.info('arquivo inválido');
+                    logger.info(e.message);
+                    resolve(false);
                 });
             }
         } catch (e) {

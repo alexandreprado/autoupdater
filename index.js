@@ -433,10 +433,16 @@ function downloadFile(source, dest) {
             }).on('end', function () {
                 logger.info('terminou o download do arquivo');
                 file.end();
-                if (total_bytes < FILE_MIN_SIZE) {
-                    return reject('Arquivo inválido, tamanho: ' + total_bytes);
-                }
-                resolve();
+                // if (total_bytes < FILE_MIN_SIZE) {
+                //     return reject('Arquivo inválido, tamanho: ' + total_bytes);
+                // }
+                arquivoValido(dest).then(function (valido) {
+                    if (valido) {
+                        resolve();
+                    } else {
+                        reject('Arquivo ' + ARCHIVE_EXT + ' inválido');
+                    }
+                });
             });
         });
     });
@@ -516,7 +522,7 @@ function fileExists(bundledUpdaterPath) {
             //     });
             // }
             if (stats.isFile()) {
-                return arquivoValido(bundledUpdaterPath).then(function(result){
+                return arquivoValido(bundledUpdaterPath).then(function (result) {
                     return resolve(result);
                 });
             }

@@ -114,7 +114,7 @@ exports.checkForUpdates = function () {
 
 function arquivoValido(bundledUpdaterPath) {
 
-    return new Promise(function (resolve, reject) {
+    return new Promise(function (resolve) {
 
         logger.info('validando arquivo ' + bundledUpdaterPath);
 
@@ -130,11 +130,11 @@ function arquivoValido(bundledUpdaterPath) {
                         // var size = entry.size;
                         entry.autodrain();
                     }).on('close', function () {
-                    logger.info('arquivo válido');
-                    resolve();
+                    logger.info('arquivo válido 1 ');
+                    resolve(true);
                 }).on('end', function () {
-                    logger.info('arquivo válido');
-                    resolve();
+                    logger.info('arquivo válido 2 ');
+                    resolve(true);
                 });
             } else {
                 fs.createReadStream(bundledUpdaterPath)
@@ -146,13 +146,18 @@ function arquivoValido(bundledUpdaterPath) {
                         // })
                     }).on("end", function () {
                     logger.info('arquivo válido');
-                    resolve();
+                    resolve(true);
                 });
             }
         } catch (e) {
+
             logger.error('arquivo inválido');
+            logger.info('removendo arquivo inválido');
             logger.error(e.message);
-            reject(e.message);
+
+            return removeFile(bundledUpdaterPath).then(function () {
+                resolve(false);
+            });
         }
     });
 }
@@ -398,9 +403,7 @@ function fetchUpdate(url, dest) {
     return fileExists(dest).then(function (exists) {
         logger.info('arquivo já existe? ' + (exists ? 'sim' : 'não'));
         if (exists) {
-
-            return arquivoValido(dest);
-            // return Promise.resolve(dest);
+            return Promise.resolve(dest);
         }
         return downloadFile(url, dest);
     });
@@ -513,7 +516,9 @@ function fileExists(bundledUpdaterPath) {
                 });
             }
             if (stats.isFile()) {
-                return resolve(true);
+                return arquivoValido(bundledUpdaterPath).then(function(result){
+                    return resolve(result);
+                });
             }
             resolve(false);
         });

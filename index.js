@@ -12,14 +12,24 @@ var notifier = require('node-notifier');
 var logger = require('electron-logger');
 var unzip = require('unzip');
 var targz = require('tar.gz');
-
-logger.setOutput({file: path.resolve(path.dirname(require.main.filename), 'updater.log')});
-
 var url = require('url');
 var https = require('https');
 
 const MANIFEST_DIR = path.resolve(path.dirname(require.main.filename), 'package.json');
 var manifest = require(MANIFEST_DIR);
+
+const SYSTEM_TEMP_DIR = os.tmpdir();
+const APP_NAME_LOWER = manifest.name.toLowerCase();
+const TMP_FOLDER = APP_NAME_LOWER + '-updater';
+const UPDATER_TEMP_DIR = path.resolve(SYSTEM_TEMP_DIR, TMP_FOLDER);
+const UPDATES_DIR = path.resolve(UPDATER_TEMP_DIR, 'updates');
+const UPDATER_BIN = path.resolve(UPDATER_TEMP_DIR, /^win/.test(process.platform) ? 'updater.exe' : 'updater');
+const FILE_MIN_SIZE = 40000000; // 40mb
+const ARCHIVE_EXT = process.platform === 'darwin' ? '.tar.gz' : '.zip';
+
+shell.mkdir('-p', UPDATES_DIR);
+
+logger.setOutput({file: path.resolve(TMP_FOLDER, 'node-updater.log')});
 
 if (!manifest.autoupdater) {
     logger.error('package.json está sem as configurações de autoupdate. Verifique');
@@ -39,14 +49,6 @@ AWS.config.update({
 
 var s3 = new AWS.S3();
 
-const SYSTEM_TEMP_DIR = os.tmpdir();
-const APP_NAME_LOWER = manifest.name.toLowerCase();
-const TMP_FOLDER = APP_NAME_LOWER + '-updater';
-const UPDATER_TEMP_DIR = path.resolve(SYSTEM_TEMP_DIR, TMP_FOLDER);
-const UPDATES_DIR = path.resolve(UPDATER_TEMP_DIR, 'updates');
-const UPDATER_BIN = path.resolve(UPDATER_TEMP_DIR, /^win/.test(process.platform) ? 'updater.exe' : 'updater');
-const FILE_MIN_SIZE = 40000000; // 40mb
-const ARCHIVE_EXT = process.platform === 'darwin' ? '.tar.gz' : '.zip';
 const AWS_PREFIX = (manifest.autoupdater.AWS_bucket_prefix ? (manifest.autoupdater.AWS_bucket_prefix + '/') : '') + process.platform;
 
 function isNWJS() {
@@ -66,9 +68,6 @@ if (isNWJS()) {
     logger.info('Aplicação rodando em Electron');
     app = require('electron').app;
 }
-
-shell.mkdir('-p', UPDATES_DIR);
-logger.info('Pasta temporária criada em ' + UPDATES_DIR);
 
 resolvePaths();
 

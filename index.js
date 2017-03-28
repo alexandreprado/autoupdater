@@ -29,7 +29,7 @@ const ARCHIVE_EXT = process.platform === 'darwin' ? '.tar.gz' : '.zip';
 
 shell.mkdir('-p', UPDATES_DIR);
 
-logger.setOutput({file: path.resolve(TMP_FOLDER, 'node-updater.log')});
+logger.setOutput({file: path.resolve(UPDATER_TEMP_DIR, 'node-updater.log')});
 
 if (!manifest.autoupdater) {
     logger.error('package.json está sem as configurações de autoupdate. Verifique');
